@@ -10,8 +10,8 @@ The `ModelRouter` is an intelligent routing system that automatically selects an
 
 Each step makes two LLM calls:
 
-1. A routing call to `gpt-4o` with `response_format=ModelOutput`. The reply is parsed into a `ModelOutput` that names the model, provider, rewritten task, `max_tokens`, `temperature`, and `system_prompt` to use.
-2. An execution call to `{provider}/{model}` through LiteLLM, using the settings from that reply.
+1. A routing call to `model_name` (default: `gpt-5.4`) with `response_format=ModelOutput`. The reply is parsed into a `ModelOutput` that names the model, provider, rewritten task, `max_tokens`, `temperature`, and `system_prompt` to use.
+2. An execution call to `{provider}/{model}` through LiteLLM, using the settings from that reply. For `anthropic`, the router passes `temperature=None` so LiteLLM omits the temperature parameter.
 
 ## Key Features
 
@@ -34,11 +34,20 @@ pip install -U swarms
 ```bash
 OPENAI_API_KEY=your_openai_api_key
 ANTHROPIC_API_KEY=your_anthropic_api_key
-GOOGLE_API_KEY=your_google_api_key
+GEMINI_API_KEY=your_gemini_api_key
+OPENROUTER_API_KEY=your_openrouter_api_key
 # Add more API keys as needed following litellm format
 ```
 
 ## Attributes
+
+<ParamField path="model_name" type="str" default="gpt-5.4">
+  Model for the routing call. Choose a model that supports `response_format=ModelOutput`. This does not fix the execution model; the routing reply selects it.
+</ParamField>
+
+<Note>
+  Do not use a Claude 5.5 model as `model_name` with the current LiteLLM integration. LiteLLM converts the response schema into a forced `tool_choice`, which these models reject. You can still route execution to the Claude models listed below.
+</Note>
 
 <ParamField path="system_prompt" type="str" default="model_router_system_prompt">
   System prompt for the routing call. It replaces the built-in selection guidance, so describe the models you want the router to choose from. It does not reach the selected model; that model gets the `system_prompt` written in the routing reply.
@@ -48,8 +57,8 @@ GOOGLE_API_KEY=your_google_api_key
   Stored as `router.max_tokens` and shown in `repr()`. Neither LLM call reads it: the execution call uses the `max_tokens` from the routing reply.
 </ParamField>
 
-<ParamField path="temperature" type="float" default="0.5">
-  Temperature for the routing call. The execution call uses the `temperature` from the routing reply.
+<ParamField path="temperature" type="Optional[float]" default="None">
+  Temperature for the routing call. The execution call uses the `temperature` from the routing reply, except that Anthropic calls use `None` to omit it.
 </ParamField>
 
 <ParamField path="max_workers" type="int | str" default="10">
@@ -329,7 +338,7 @@ class MedicalDataProcessor:
             temperature=0.2,     # Applies to the routing call
             system_prompt="""You route medical data analysis tasks to a model.
             Choose provider "openai" with model "gpt-5.4" for structured record review,
-            or provider "anthropic" with model "claude-sonnet-4-6" for long clinical reasoning.
+            or provider "anthropic" with model "claude-sonnet-5-5" for long clinical reasoning.
             Write a system prompt for the chosen model that focuses on clinical terminology,
             medication interactions, and lab interpretation."""
         )
@@ -437,18 +446,21 @@ The default routing prompt embeds these recommendations. The routing model can s
 
 | Model | Provider | Best for |
 |-------|----------|----------|
-| gpt-5.4 | openai | Simple queries, basic text generation, quick responses |
-| gpt-4-turbo | openai | Complex tasks, up-to-date knowledge, long context |
-| gpt-3.5-turbo | openai | Chat applications, content generation, basic assistance |
-| o3-mini | groq | Basic completion, simple classification, constrained environments |
-| deepseek-reasoner | deepseek | Complex problem solving, logical reasoning, mathematical analysis |
-| claude-3-5-sonnet | anthropic | Creative writing, detailed analysis, nuanced responses |
-| claude-3-opus | anthropic | Research, complex analysis, technical writing, code generation |
-| gemini-pro | google | Multimodal tasks, code generation, creative content |
-| mistral-large | mistral | General purpose tasks, code assistance, content generation |
+| gpt-5.4 | openai | Complex reasoning, Coding and debugging, Multi-step agentic tasks |
+| openai/gpt-oss-120b | groq | Low-latency responses, Simple classification, Cost-sensitive workloads |
+| deepseek-v4-pro | deepseek | Complex problem solving, Logical reasoning, Mathematical analysis, High IQ tasks |
+| claude-sonnet-5-5 | anthropic | Everyday coding, Detailed analysis, Agentic tool use |
+| claude-opus-5-5 | anthropic | Research, Complex analysis, Technical writing, Code generation |
+| gemini-2.5-pro | gemini | Multimodal tasks, Code generation, Very long documents |
+| minimax/minimax-m3 | openrouter | Long-horizon agentic tasks, Coding, Very long documents |
+| z-ai/glm-5.3 | openrouter | Complex software engineering, Long-horizon agent tasks, Step-by-step reasoning |
+| mistral-large-latest | mistral | General purpose tasks, Code assistance, Content generation |
+| claude-fable-5-1 | anthropic | Hardest reasoning tasks, Long agentic coding, Large refactors |
+| gpt-5.4-mini | openai | Everyday tasks, Quick responses, High-volume workloads |
+| claude-haiku-5-5 | anthropic | Classification, Summarization, Simple queries |
 
 <Warning>
-  Most of these are older model names. If your provider no longer serves the model the router picks, the execution call fails. Pass a `system_prompt` that lists the models you can call.
+  The table reflects the built-in routing recommendations. Provider availability and account access can change. Pass a `system_prompt` that lists the models you can call.
 </Warning>
 
 ## Provider Capabilities
@@ -461,6 +473,7 @@ The default routing prompt embeds these recommendations. The routing model can s
 | Groq | High-speed inference | Real-time applications | Optimized for specific models |
 | DeepSeek | Specialized reasoning | Scientific computing | Custom API integration |
 | Mistral | Open source flexibility | General applications | Self-hosted options available |
+| OpenRouter | Access to multiple providers | MiniMax and Z.ai GLM routes | Requires `OPENROUTER_API_KEY` |
 
 ## Performance Optimization Tips
 
